@@ -1,0 +1,41 @@
+import numpy as np
+
+# Initializing constants and parameters for chemical network
+zeta = 7.6e-19 # ionization rate of H2 in s^-1
+T =            # Temperature in K
+n_H2 = 10e14 # concentration of H2 in cm^-3
+q = 3.5 # power law index for grain size distribution
+a = [10e-5,10e-4,10e-3,10e-2,10e-1] # grain sizes in cm
+Z = [] # charges of the grains
+dust_to_gas_ratio = 0.01 
+beta = 3e-9 # rate coefficient for charge transfer in cm^3 s^-1
+alpha = 3e-6 # rate coefficient for dissociative recombination in T^-1/2 cm^3 s^-1
+gamma = 3e-11 # rate coefficient for radiative recombination in T^-1/2 cm^3 s^-1
+IP = 4.34  # ionization potential in eV
+k_B = 8.617e-5 # Boltzmann constant in eV/K
+k_2 = (9.9e-9)*np.exp(-IP/k_B*T) # rate coefficient for collisional ionisation in T^1/2 cm^3 s^-1
+k_minus_2 = 4.4e-24 # rate coefficient for 3-body recombination in cm^6 s^-1
+s_electrons = 0.6 # sticking coefficient for electrons
+s_ions_neutrals = 1 # sticking coefficient for ions and neutrals
+nu = 3.7e13 # condensed alk vibration frequency in s^-1
+E_a = 3.25 # activation energy in eV
+W = 5 # work function in eV
+e = 1.602e-19 # elementary charge in C
+phi = -(Z*e)/a # electrostatic potential of the grain in V
+W_eff = W - e*phi # effective work function in eV
+g_plus = 1 # degeneracy factor for ions
+g_0 = 2 # degeneracy factor for neutrals
+f_plus = 1/(1+((g_0/g_plus)*np.exp(IP-W_eff/(k_B*T)))) # Fraction of alk plus evaporated
+lambda_R = 0.5 # Richardson constant
+m_e = 9.109e-31 # mass of electron in kg
+h = 6.626e-34 # Planck's constant in J s
+
+# Concentrations of different species
+n_e = 
+n_m_plus =
+n_M_0 =
+n_M_plus = 
+n_alk_0 =
+n_alk_plus =
+n_alk_cond = []
+n_gr = [] 
