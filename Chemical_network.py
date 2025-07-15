@@ -1,15 +1,18 @@
 #%%
 
 import numpy as np
+import scipy as sp
 import matplotlib.pyplot as plt
+np.set_printoptions(linewidth=200)
+np.set_printoptions(formatter={'float_kind': lambda x: f"{x:.2e}"})
 
 #%%
 
 def calculate_nu_ff(Z,q,e):
     return Z * (e/q)
 
-def calculate_tau(a,k_B,T,q):
-    return a * k_B * T / q**2
+def calculate_tau(a,k_B,T):
+    return a * k_B * T / e**2
 
 def calculate_focusing_factor_J(nu, tau): # Taken from M.Williams C code
     if nu < -1:
@@ -35,28 +38,22 @@ def calculate_focusing_factor_derivative_dJ_dnu(nu, tau):
         term1 = (-1 / tau) * (1 + np.sqrt(2 / (tau - 2 * nu)))
         term2 = (1 - nu / tau) * (np.sqrt(2 / ((tau - 2 * nu) ** 3.0)))
         return term1 + term2
-
     elif nu > 1:
         A = (4 * tau + 3 * nu)
         sqrt_A = np.sqrt(A)
         sqrt_nu = np.sqrt(nu)
         denom_inner = 1 + 1 / sqrt_nu
         exp_term = np.exp(-(nu / denom_inner) / tau)
-
         term1 = -3 * A ** (-1.5) * (1 + 1 / sqrt_A) * exp_term
-
         numerator = (0.5 * nu ** -0.5 + nu ** -0.5 + 1)
         denom = (1 + nu ** -0.5) ** 2
         term2 = (1 / tau) * (numerator / denom) * exp_term
-
         return term1 - (1 + 1 / sqrt_A) ** 2 * term2
-
     elif nu < 0:
         # Interpolation between nu = -1 and nu = 0
         left_val = (1 + np.sqrt(np.pi / (2 * tau)))
         right_val = ((1 - (-1) / tau) * (1 + np.sqrt(2 / (tau - 2 * (-1)))))
         return left_val - right_val
-
     else:
         # Interpolation between nu = 0 and nu = 1
         left_val = -(1 + np.sqrt(np.pi / (2 * tau)))
@@ -64,29 +61,34 @@ def calculate_focusing_factor_derivative_dJ_dnu(nu, tau):
         right_val = (1 + 1 / sqrt_term) ** 2 * np.exp(-(1. / (1 + 1 / np.sqrt(1.))) / tau)
         return left_val + right_val
 
+# def calculate_focusing_factor_J(nu, tau):
+#     if nu < 0:
+#         return 1-(nu/tau)
+#     else:
+#         return np.exp(-nu/tau)
+    
+# def calculate_focusing_factor_derivative_dJ_dnu(nu, tau):
+#     if nu < 0:
+#         return -1/tau
+#     else:
+#         return -np.exp(-nu/tau)/tau
+
 def calc_W_eff(Z):
-    phi = -(Z * e) / a  # electrostatic potential of the grain in V
-    W_eff = W - (e * phi)  # effective work function in J
+    phi = -(Z*e)/a  # electrostatic potential of the grain in V
+    W_eff = W-(e*phi)  # effective work function in J
     return W_eff
 
 def calc_f_plus(Z):
     phi = -(Z*e)/a # electrostatic potential of the grain in V
-    W_eff = W - (e*phi) # effective work function in J
+    W_eff = W-(e*phi) # effective work function in J
     g_plus = 1 # degeneracy factor for ions (Taken from Desch & Turner 2015)
     g_0 = 2 # degeneracy factor for neutrals (Taken from Desch & Turner 2015)
-    f_plus = 1/(1+((g_0/g_plus)*np.exp(IP-W_eff/(k_B*T)))) # Fraction of alkali ions evaporated
+    f_plus = 1/(1+((g_0/g_plus)*np.exp((IP-W_eff)/(k_B*T)))) # Fraction of alkali ions evaporated
     return f_plus
 
-def calc_df_plus_dZ(Z):
-    g_plus = 1
-    g_0 = 2
-    A = g_0 / g_plus
-    B = 1 / (k_B * T)
-    exponent = B * (IP - W - (Z * e**2) / a)
-    exp_term = np.exp(exponent)
-    numerator = A * e**2 * B * exp_term / a
-    denominator = (1 + A * exp_term)**2
-    return numerator / denominator
+def calc_df_plus_dZ(f_plus,tau):
+    df_plus_dz = (1/tau)*(1-f_plus)*f_plus
+    return df_plus_dz
 
 
 #%%
@@ -96,7 +98,7 @@ def calc_df_plus_dZ(Z):
 k_B = 1.38e-23 # Boltzmann constant in J/K
 h = 6.626e-34 # Planck's constant in Js
 lambda_R = 0.5 # Richardson constant
-n_H2 = 10e14 # number density of H2 in cm^-3
+n_H2 = 1e14 # number density of H2 in cm^-3
 e = 1.602e-19 # elementary charge in C
 
 # Density and dust-to-gas ratio
@@ -107,7 +109,7 @@ f_dg = 0.01 # dust-to-gas mass ratio
 T = 1000 # temperature in K (Arbitrary value for testing)
 
 # MRN grain size distribution
-q = 2.5 # power law index for grain size distribution
+q = 3.5 # power law index for grain size distribution
 mu = 2.34 # mean molecular weight in g/mol
 m_H = 1.67e-24 # mass of hydrogen atom in g
 x_H = 9.21e-1 # mass fraction of hydrogen in the gas
@@ -121,7 +123,8 @@ a = np.logspace(np.log10(a_min), np.log10(a_max), N_gr) # grain sizes in cm
 n_gr = A * a**(-q)
 
 # Initial heuristic charge distribution of grains
-Z = np.full_like(a, -1)
+Z = [-1e2,-1e4,-1e6]
+# Z = np.full_like(a, -1)
 # Z = -(a/1e-5)**0.1
 
 # Rate coefficients
@@ -145,20 +148,50 @@ m_alk_0 = 6.491e-23 # neutral alkali (K) mass in g
 m_m_plus = 4.814e-23 # molecular ion (HCO+) mass in g
 m_M_plus = 4.037e-23 # metal ion (Mg+) mass in g
 
-# Charge of different gas-phase species
+# Charge and sticking coefficients of different gas-phase species
 q_e = -e # charge of electron in C
 q_ion = e # charge of ion in C
+s_electrons = 0.6 # sticking coefficient for electrons
+s_ions = 1 # sticking coefficient for ions and neutrals
 
 # Initial concentrations of different species
 n_alk_tot = 3.04e-7 * n_H2 # total concentration of alkali (K) in cm^-3
 n_alk_plus = 1e-7 * n_H2 # initial concentration of alkali ion (K+) in cm^-3
 n_e = 1e-7 * n_H2 # initial concentration of free electrons in cm^-3
 n_m_plus = 1e-10 * n_H2 # initial concentration of molecular ion (HCO+) in cm^-3
+n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
+
+# print("Initial concentrations:\n")
+# print("Z:")
+# print([f"{z:.2e}" for z in Z])
+# print()
+# print("n_gr:")
+# print([f"{ngr:.2e}" for ngr in n_gr])
+# print()
+# print("Z*n_gr:")
+# Zn_gr = Z * n_gr
+# print([f"{prod:.2e}" for prod in Zn_gr])
+# print()
+# print("np.sum(Z*n_gr):")
+# print(f"{np.sum(Zn_gr):.2e}")
+# print()
+# print("n_alk_plus:")
+# print(f"{n_alk_plus:.2e}")
+# print()
+# print("n_m_plus:")
+# print(f"{n_m_plus:.2e}")
+# print()
+# print("n_M_plus:")
+# print(f"{n_M_plus:.2e}")
+# print()
+# print("n_e:")
+# print(f"{n_e:.2e}")
+# print()
 
 x = np.concatenate((Z, np.array([n_alk_plus, n_e, n_m_plus])))
 
-print("Initial concentrations:")
-print(x)
+# print("Initial concentrations:")
+# print(x)
 
 
 #%%
@@ -176,20 +209,28 @@ def calculate_F(x):
     nu_ff_e = calculate_nu_ff(Z, q_e, e) 
     nu_ff_ion = calculate_nu_ff(Z, q_ion, e)
 
-    tau_e = calculate_tau(a, k_B, T, q_e)
-    tau_ion = calculate_tau(a, k_B, T, q_ion)
+    # print("nu_ff_e:")
+    # print(nu_ff_e)
+    # print("")
+    # print("nu_ff_ion:")
+    # print(nu_ff_ion)
+    # print("")
+
+    tau = calculate_tau(a, k_B, T)
+
+    # print("tau:")
+    # print(tau)
+    # print("")
 
     # Focusing factor and sticking coefficient of different gas-phase species
     J_e = np.zeros_like(a) # Focusing factor for electrons
     J_ion = np.zeros_like(a) # Focusing factor for ions
 
     for i in range(len(a)):
-        J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau_e[i]) # Focusing factor for electrons
-        J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau_ion[i]) # Focusing factor for ions
+        J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau[i]) # Focusing factor for electrons
+        J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau[i]) # Focusing factor for ions
 
     J_neutral = np.ones_like(a) # Focusing factor for neutral alkali (K)
-    s_electrons = 0.6 # sticking coefficient for electrons
-    s_ions = 1 # sticking coefficient for ions and neutrals
 
     # Frequencies of different gas-phase species
     nu_e = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_e))**0.5 * s_electrons * J_e 
@@ -203,6 +244,11 @@ def calculate_F(x):
     n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
 
     W_eff = calc_W_eff(Z) # effective work function in J
+
+    # print("Effective work function (eV):")
+    # print(W_eff/e)
+    # print("")
+
     f_plus = calc_f_plus(Z) # fraction of alkali ions evaporated
 
     x_M = 3.67e-5
@@ -251,35 +297,59 @@ def calculate_Jacobian(x):
     nu_ff_e = calculate_nu_ff(Z, q_e, e) 
     nu_ff_ion = calculate_nu_ff(Z, q_ion, e)
 
-    tau_e = calculate_tau(a, k_B, T, q_e)
-    tau_ion = calculate_tau(a, k_B, T, q_ion)
+    # print("nu_ff_e:")
+    # print(nu_ff_e)
+    # print("")
+    # print("nu_ff_ion:")
+    # print(nu_ff_ion)
+    # print("")
+
+    tau = calculate_tau(a, k_B, T)
+
+    # print("tau:")
+    # print(tau)
+    # print("")
 
     # Focusing factor for different gas-phase species
     J_e = np.zeros_like(a) # Focusing factor for electrons
     J_ion = np.zeros_like(a) # Focusing factor for ions
 
     for i in range(len(a)):
-        J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau_e[i]) # Focusing factor for electrons
-        J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau_ion[i]) # Focusing factor for ions
+        J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau[i]) # Focusing factor for electrons
+        J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau[i]) # Focusing factor for ions
+
+    # print("nu_ff_e/tau:")
+    # print((nu_ff_e/tau))
+    # print("")
+    # print("J_e:")
+    # print(J_e)
+    # print("")
+    # print("J_ion:")
+    # print(J_ion)
+    # print("")
 
     # Derivative of focusing factor wrt Z
     dJ_e = np.zeros_like(a) # Focusing factor for electrons
     dJ_ion = np.zeros_like(a) # Focusing factor for ions
 
     for i in range(len(a)):
-        dJ_e[i] = -calculate_focusing_factor_derivative_dJ_dnu(nu_ff_e[i], tau_e[i]) # Focusing factor for electrons
-        dJ_ion[i] = calculate_focusing_factor_derivative_dJ_dnu(nu_ff_ion[i], tau_ion[i]) # Focusing factor for ions
+        dJ_e[i] = -calculate_focusing_factor_derivative_dJ_dnu(nu_ff_e[i], tau[i]) # Focusing factor for electrons
+        dJ_ion[i] = calculate_focusing_factor_derivative_dJ_dnu(nu_ff_ion[i], tau[i]) # Focusing factor for ions
+
+    # print("dJ_e:")
+    # print(dJ_e)
+    # print("")
+    # print("dJ_ion:")
+    # print(dJ_ion)
+    # print("")
 
     J_neutral = np.ones_like(a) # Focusing factor for neutral alkali (K)
-    s_electrons = 0.6 # sticking coefficient for electrons
-    s_ions = 1 # sticking coefficient for ions and neutrals
 
     # Frequencies for different gas-phase species
     nu_e = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_e))**0.5 * s_electrons * J_e 
     nu_alk_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_alk_plus))**0.5 * s_ions * J_ion
     nu_alk_0 = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_alk_0))**0.5 * s_ions * J_neutral
     nu_m_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_m_plus))**0.5 * s_ions * J_ion
-    nu_M_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_M_plus))**0.5 * s_ions * J_ion
 
     n_alk_0 = n_alk_tot - (1+(np.sum(nu_alk_plus)/nu_evap)*n_alk_plus)/(1+(np.sum(nu_alk_0))/nu_evap) # initial concentration of neutral alkali (K) in cm^-3
     n_alk_cond = (1/nu_evap) * (nu_alk_plus*n_alk_plus + nu_alk_0*n_alk_0) # initial concentration of condensed alkali (K) on grains in cm^-3
@@ -295,7 +365,7 @@ def calculate_Jacobian(x):
     dnu_M_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_M_plus))**0.5 * s_ions * dJ_ion
 
     dn_alk_cond = (1/nu_evap) * (dnu_alk_plus*n_alk_plus) 
-    df_plus_dZ = calc_df_plus_dZ(Z)
+    df_plus_dZ = calc_df_plus_dZ(f_plus,tau)
 
     x_M = 3.67e-5
     x_H = 9.21e-1
@@ -339,51 +409,69 @@ def calculate_Jacobian(x):
 
 max_iter = 10
 tolerance = 1e-7
+iter = 0
 
 for iteration in range(max_iter):
+
+    print("--------------------------------------------------")
+    print(f"Iteration {iteration + 1}/{max_iter}")
+    print("")
+
     F = calculate_F(x)
-    print(f"Iteration {iteration}, function values:")
-    print(F)
+    # print(f"Iteration {iteration}, F values:")
+    # print(F)
+    # print("")
     
     J = calculate_Jacobian(x)
-    print(f"Iteration {iteration}, Jacobian:")
-    print(J)
+    # print(f"Iteration {iteration}, Jacobian:")
+    # print(J)
+    # print("")
     
-    det = np.linalg.det(J)
-    print(f"Determinant: {det}")
+    det = sp.linalg.det(J)
+    # print(f"Determinant: {det}")
     
-    if abs(det) < 1e-12:
-        print("Warning: Matrix is close to singular and might not be invertible.")
-        break 
+    # if abs(det) < 1e-12:
+    #     print("Warning: Matrix is close to singular and might not be invertible.")
+    #     break 
 
-    J_inv = np.linalg.inv(J)
-    print("Inverse of Jacobian:")
-    print(J_inv)
-
-    I = J_inv @ J
-    print("Identity matrix:")
-    print(I)
-
-    delta_x = -J_inv @ F
+    delta_x = sp.linalg.solve(J, -F)
     print("Change in x:")
     print(delta_x)
+    print("")
     
-    delta = 1000
-    alpha_const = 1e-12
-    beta_const = 1e-15
-    if abs(delta_x).max() >= delta:
+    delta = 100
+    alpha_const = 0.01
+    beta_const = 1e-14
+    norm_delta_x = sp.linalg.norm(delta_x)
+    if norm_delta_x >= delta:
         print("Adjusting step size due to large delta_x.")
-        delta_x = -alpha_const * (J_inv @ F) - 2 * beta_const * (J.T @ F)
+        print("")
+        delta_x = (alpha_const*sp.linalg.solve(J, -F)) - (2*beta_const*(J.T @ F))
+        print("Beta constant bit")
+        print(-(2*beta_const*(J.T @ F)))
+        print("")
+        print("Adjusted change in x:")
+        print(delta_x)
+        print("")
+
     
     print("Current concentrations:")
     print(x)
+    print("")
     
-    x = x + delta_x
+    x += delta_x
     print("Updated concentrations:")
     print(x)
+    print("")
 
-    if abs(F).max() < tolerance:
+    norm_F = sp.linalg.norm(F)
+    if norm_F < tolerance:
         print(f"Convergence achieved after {iteration + 1} iterations.")
+        print("")
         break
-else:
-    print("Maximum iterations reached without convergence.")
+    
+    if iteration == max_iter - 1:
+        print("Maximum iterations reached without convergence.")
+        print("")
+
+# %%
