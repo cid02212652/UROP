@@ -139,25 +139,73 @@ x_H = 9.21e-1 # mass fraction of hydrogen in the gas
 rho = mu * m_H * ((2-x_H)/x_H) * n_H2
 a_min = 1e-5 # minimum grain size in cm
 a_max = 1e-1 # maximum grain size in cm
-A = ((f_dg*rho)/rho_gr) * (3/(4*np.pi)) * (4-q) * ((1/(a_min**(4-q))) - (1/(a_max**(4-q)))) # normalization constant for MRN distribution
+A = ((f_dg*rho)/rho_gr) * (3/(4*np.pi)) * (4-q) * ((1/(a_min**(4-q)))-(1/(a_max**(4-q)))) # normalization constant for MRN distribution
 
-N_gr = 3
-a = np.logspace(np.log10(a_min), np.log10(a_max), N_gr) # grain sizes in cm
-n_gr = A * a**(-q)
+# print("rho")
+# print(f"{rho:.2e} g cm^-3")
+# print()
+
+# print("A:")
+# print(f"{A:.2e}")
+# print()
+
+N_gr = 4
+a_edges = np.logspace(-5, -1, N_gr+1) # grain sizes in cm
+a = np.sqrt(a_edges[:-1] * a_edges[1:])  # geometric mean
+
+n_gr = np.zeros(N_gr)
+for i in range(N_gr):
+    a1 = a_edges[i]
+    a2 = a_edges[i + 1]
+    n_gr[i] = (A / (1 - q)) * (a2**(1 - q) - a1**(1 - q))
+
+n_gr_total = np.sum(n_gr)  # total number density of grains
+
+# print("a_edges:")
+# print([f"{a:.2e}" for a in a_edges])
+# print()
+# print("a_centers:")
+# print([f"{i:.2e}" for i in a])
+# print()
+# print("n_gr:")
+# print([f"{ngr:.2e}" for ngr in n_gr])
+# print()
+# print("n_gr_total:")
+# print(f"{n_gr_total:.2e}")
+# print()
+
+# plt.figure(figsize=(10, 6))
+# plt.step(a_edges[:], np.append(n_gr, 0), where='post', label='Grain Size Distribution')
+# for value in a:
+#     plt.axvline(x=value, color='red', linestyle='--', linewidth=1.5, label=f'a = {value}')
+# plt.xscale('log')
+# plt.yscale('log')
+# plt.xlabel('Grain Size (cm)')
+# plt.ylabel('Number Density per Bin (cm$^{-3}$)')
+# plt.title('Binned MRN Grain Size Distribution')
+# plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+# plt.tight_layout()
+# plt.show()
 
 # Initial heuristic charge distribution of grains
-Z = np.array([-1e2,-1e4,-1e6])
-# Z = np.full_like(a, -1)
-# Z = -(a/1e-5)**0.1
+Z_edges = np.logspace(2, 6, N_gr+1) # charge distribution in esu (erg^0.5 cm^1/2 s^-1)
+Z = -np.sqrt(Z_edges[:-1] * Z_edges[1:])
+
+# print("Z_edges:")
+# print([f"{z:.2e}" for z in Z_edges])
+# print()  # geometric mean of charge distribution
+# print("Z:")
+# print([f"{z:.2e}" for z in Z])
+# print()
 
 # Rate coefficients
-# zeta = 7.6e-19 # ionization rate of H2 in s^-1
-zeta = 1.4e-22 # ionization rate of H2 in s^-1 (Desch & Turner 2015)
+zeta = 7.6e-19 # ionization rate of H2 in s^-1
+# zeta = 1.4e-22 # ionization rate of H2 in s^-1 (Desch & Turner 2015)
 beta = 3e-9 # rate coefficient for charge transfer in cm^3 s^-1
-alpha = 3e-6*(T**-0.5) # rate coefficient for dissociative recombination in T^-1/2 cm^3 s^-1
-gamma = 3e-11*(T**-0.5) # rate coefficient for radiative recombination in T^-1/2 cm^3 s^-1
+alpha = (3e-6)*(T**-0.5) # rate coefficient for dissociative recombination in T^-1/2 cm^3 s^-1
+gamma = (3e-11)*(T**-0.5) # rate coefficient for radiative recombination in T^-1/2 cm^3 s^-1
 IP = 4.34 * eV  # ionization potential in erg
-k_2 = (9.9e-9)*np.exp(-IP/(k_B*T))*(T**0.5) # rate coefficient for collisional ionisation in T^1/2 cm^3 s^-1
+k_2 = (9.9e-9)*(T**0.5)*np.exp(-IP/(k_B*T)) # rate coefficient for collisional ionisation in T^1/2 cm^3 s^-1
 k_minus_2 = 4.4e-24*(T**-1) # rate coefficient for 3-body recombination in T^-1 cm^6 s^-1
 
 # Electrostatic potential, effective work function and fraction of alkali ions evaporated
@@ -194,8 +242,8 @@ s_ions = 1 # sticking coefficient for ions and neutrals
 # n_alk_tot = (((2*x_alk)/x_H) * n_H2)
 
 n_alk_tot = 3.04e-7 * n_H2 # total concentration of alkali (K) in cm^-3 (Desch & Turner 2015)
-n_alk_plus = 1e-14 * n_H2 # initial concentration of alkali ion (K+) in cm^-3
-n_e = 1e-9 * n_H2 # initial concentration of free electrons in cm^-3
+n_alk_plus = 1e-10 * n_H2 # initial concentration of alkali ion (K+) in cm^-3
+n_e = 1e-10 * n_H2 # initial concentration of free electrons in cm^-3
 n_m_plus = 1e-19 * n_H2 # initial concentration of molecular ion (HCO+) in cm^-3
 n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
 
@@ -204,6 +252,9 @@ n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration 
 # print([f"{z:.2e}" for z in Z])
 # print()
 # print("n_gr:")
+# print([f"{ngr:.2e}" for ngr in n_gr])
+# print()
+# print("n_gr/n_H2:")
 # print([f"{ngr/n_H2:.2e}" for ngr in n_gr])
 # print()
 # print("Z*n_gr:")
@@ -302,9 +353,6 @@ def calculate_F(x):
     # print("nu_M_plus:")
     # print(nu_M_plus)
     # print("")
-    # print("nu_evap:")
-    # print(nu_evap)
-    # print("")
 
     n_alk_0 = (n_alk_tot - ((1+(np.sum(nu_alk_plus)/nu_evap))*n_alk_plus))/(1+(np.sum(nu_alk_0)/nu_evap)) # initial concentration of neutral alkali (K) in cm^-3
     n_alk_cond = (1/nu_evap) * ((nu_alk_plus*n_alk_plus) + (nu_alk_0*n_alk_0)) # initial concentration of condensed alkali (K) on grains in cm^-3
@@ -322,11 +370,11 @@ def calculate_F(x):
     # print("")
 
     # print("nu_evap")
-    # print(nu_evap)
+    # print(f"{nu_evap:.2e}")
     # print("")
 
     # print("n_alk_plus")
-    # print(n_alk_plus)
+    # print(f"{n_alk_plus:.2e}")
     # print("")
 
     # print("n_alk_0:")
@@ -341,7 +389,7 @@ def calculate_F(x):
     
     W_eff = calc_W_eff(Z) # effective work function in erg
 
-    # print("Effective work function (eV):")
+    # print("W_eff (eV):")
     # print(W_eff/eV)
     # print("")
     # print("W_eff/(k_B*T):")
@@ -355,6 +403,9 @@ def calculate_F(x):
     n_M_tot = (((2*x_M)/x_H) * n_H2)
     n_M_0 = n_M_tot - n_M_plus # initial concentration of neutral metal (Mg) in cm^-3
 
+    # print("n_M_tot:")
+    # print(f"{n_M_tot:.2e}")
+    # print()
     # print("n_M_0:")
     # print(f"{n_M_0:.2e}")
     # print()
@@ -368,6 +419,22 @@ def calculate_F(x):
     R_gas_2rec_alk_plus = gamma * n_alk_plus * n_e # rate of radiative recombination for alkali ions in T^-1/2 cm^-3 s^-1
     R_gas_3rec_alk_plus = k_minus_2 * n_alk_plus * n_e * n_H2 # rate of 3-body recombination for alkali ions in T^-1 cm^6 s^-1
 
+    # print("Rates of gas-phase reactions:")
+    # print()
+    # print("R_ct:") 
+    # print(f"{R_ct:.2e}")
+    # print("R_dissrec:")
+    # print(f"{R_dissrec:.2e}")
+    # print("R_gas_2rec_M_plus:")
+    # print(f"{R_gas_2rec_M_plus:.2e}")
+    # print("R_gas_collion:")
+    # print(f"{R_gas_collion:.2e}")
+    # print("R_gas_2rec_alk_plus:")
+    # print(f"{R_gas_2rec_alk_plus:.2e}")
+    # print("R_gas_3rec_alk_plus:")
+    # print(f"{R_gas_3rec_alk_plus:.2e}")
+    # print()
+
     # Dust-phase reactions (surface of grains)
     R_e_ads = n_e * nu_e # rate of electron adsorption in cm^-3 s^-1
     R_alk_plus_ads = n_alk_plus * nu_alk_plus # rate of alkali ion (K+) adsorption in cm^-3 s^-1
@@ -376,6 +443,24 @@ def calculate_F(x):
     R_alk_evap = n_alk_cond * nu_evap # rate of total alkali evaporation in cm^-3 s^-1
     R_alk_plus_evap = f_plus * R_alk_evap # rate of alkali ion evaporation in cm^-3 s^-1
     R_therm = n_gr * 4*np.pi * a**2 * lambda_R * ((4*np.pi*m_e*((k_B*T)**2))/(h**3)) * np.exp(-W_eff/(k_B*T)) # rate of thermionic emission of electrons in cm^-3 s^-1
+
+    # print("Rates of dust-phase reactions:")
+    # print()
+    # print("R_e_ads:")
+    # print(R_e_ads)
+    # print("R_alk_plus_ads:")
+    # print(R_alk_plus_ads)
+    # print("R_m_plus_ads:")
+    # print(R_m_plus_ads)
+    # print("R_M_plus_ads:")
+    # print(R_M_plus_ads)
+    # print("R_alk_evap:")
+    # print(R_alk_evap)
+    # print("R_alk_plus_evap:")
+    # print(R_alk_plus_evap)
+    # print("R_therm:")
+    # print(R_therm)
+    # print()
 
     for i in range(N_gr):
         F[i] = R_alk_plus_ads[i] + R_m_plus_ads[i] + R_M_plus_ads[i] - R_e_ads[i] + R_therm[i] - R_alk_plus_evap[i]
@@ -575,7 +660,7 @@ residual_history = []
 component_history = [[] for _ in range(len(x))] 
 omegas = []
 
-def nSOR(x, iteration=1000, omega_start=1e-5, omega_end=1.2, tol_F = 1e-6):
+def nSOR(x, iteration=1000, omega_start=1e-1, omega_end=1.2, tol_F = 1e-6):
 
     N = len(x)
     omega = omega_start
@@ -748,7 +833,7 @@ for iteration in range(max_iter):
     #     print("Warning: Matrix is close to singular and might not be invertible.")
     #     break 
 
-    J_inv = sp.linalg.pinv(J)
+    J_inv = sp.linalg.inv(J)
     delta_x = -J_inv @ F
     print("Change in x:")
     print(delta_x)
@@ -793,8 +878,7 @@ for iteration in range(max_iter):
 
 # Plotting the residual history
 plt.figure(figsize=(10, 5))
-plt.plot(residual_history_2, label='Residual Norm')
-plt.yscale('log')
+plt.plot(residual_history_2, label='Residual Norm', linewidth=1)
 plt.xlabel('Iteration')
 plt.ylabel('||F(x)||')
 plt.title('Residual Norm Convergence')
