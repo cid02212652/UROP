@@ -15,52 +15,66 @@ def calculate_nu_ff(Z,q,e):
 def calculate_tau(a,k_B,T):
     return (a * k_B * T) / (e**2)
 
-def calculate_focusing_factor_J(nu, tau): # Taken from M.Williams C code
+def calculate_focusing_factor_J(nu, tau):
     if nu < -1:
-        # Equation (3.4 D+S 87)
-        return (1 - nu / tau) * (1 + np.sqrt(2 / (tau - 2 * nu)))
+        # Equation (3.4) from D+S (1987)
+        factor = (1 - nu / tau)
+        sqrt_term = np.sqrt(2 / (tau - 2 * nu))
+        return factor * (1 + sqrt_term)
     elif nu > 1:
         # Equation (3.5)
-        return (1 + 1 / np.sqrt(4 * tau + 3 * nu)) ** 2 * np.exp(-(nu / (1 + 1 / np.sqrt(nu))) / tau)
+        sqrt_term = 1 / np.sqrt(4 * tau + 3 * nu)
+        pre_factor = (1 + sqrt_term) ** 2
+        exp_arg = -(nu / (1 + 1 / np.sqrt(nu))) / tau
+        return pre_factor * np.exp(exp_arg)
     elif nu < 0:
         # Interpolation for -1 < nu < 0
-        term1 = (1 + np.sqrt(np.pi / (2 * tau))) * (1 + nu)
-        term2 = ((1 - (-1) / tau) * (1 + np.sqrt(2 / (tau - 2 * (-1))))) * (-nu)
-        return term1 - term2
+        left_term = (1 + np.sqrt(np.pi / (2 * tau))) * (1 + nu)
+        right_term = (1 + np.sqrt(2 / (tau + 2))) * (1 + 1 / tau) * (-nu)
+        return left_term - right_term
+    elif nu == 0:
+        return 1 + np.sqrt(np.pi / (2 * tau))
     else:
         # Interpolation for 0 ≤ nu ≤ 1
-        term1 = (1 + np.sqrt(np.pi / (2 * tau))) * (1 - nu)
-        term2 = (1 + 1 / np.sqrt(4 * tau + 3)) ** 2 * np.exp(-(1 / (1 + 1 / np.sqrt(1))) / tau) * nu
-        return term1 + term2
+        left_term = (1 + np.sqrt(np.pi / (2 * tau))) * (1 - nu)
+        pre_factor = (1 + 1 / np.sqrt(4 * tau + 3)) ** 2
+        exp_arg = -(1 / (1 + 1 / np.sqrt(1))) / tau
+        right_term = pre_factor * np.exp(exp_arg) * nu
+        return left_term + right_term
 
 def calculate_focusing_factor_derivative_dJ_dnu(nu, tau):
-    # Not wrt Z!!
     if nu < -1:
-        term1 = (-1 / tau) * (1 + np.sqrt(2 / (tau - 2 * nu)))
-        term2 = (1 - nu / tau) * (np.sqrt(2 / ((tau - 2 * nu) ** 3.0)))
-        return term1 + term2
+        # Derivative of Equation (3.4)
+        sqrt_term = np.sqrt(2 / (tau - 2 * nu))
+        dsqrt_dnu = (2 * sqrt_term) / ((tau - 2 * nu) ** 1.5)
+        dJ_dnu = (-1 / tau) * (1 + sqrt_term) + (1 - nu / tau) * dsqrt_dnu
+        return dJ_dnu
     elif nu > 1:
-        A = (4 * tau + 3 * nu)
+        # Derivative of Equation (3.5)
+        A = 4 * tau + 3 * nu
         sqrt_A = np.sqrt(A)
         sqrt_nu = np.sqrt(nu)
         denom_inner = 1 + 1 / sqrt_nu
-        exp_term = np.exp(-(nu / denom_inner) / tau)
-        term1 = -3 * A ** (-1.5) * (1 + 1 / sqrt_A) * exp_term
-        numerator = (0.5 * nu ** -0.5 + nu ** -0.5 + 1)
-        denom = (1 + nu ** -0.5) ** 2
-        term2 = (1 / tau) * (numerator / denom) * exp_term
-        return term1 - (1 + 1 / sqrt_A) ** 2 * term2
+        exp_arg = -(nu / denom_inner) / tau
+        exp_term = np.exp(exp_arg)
+        d_prefactor_dnu = -3 * A ** (-1.5) * (1 + 1 / sqrt_A)
+        pre_factor = (1 + 1 / sqrt_A) ** 2
+        d_exp_arg_dnu = (0.5 / sqrt_nu + 1) / (denom_inner ** 2 * tau)
+        d_exp_term_dnu = -exp_term * d_exp_arg_dnu
+        return d_prefactor_dnu * exp_term + pre_factor * d_exp_term_dnu
     elif nu < 0:
-        # Interpolation between nu = -1 and nu = 0
-        left_val = (1 + np.sqrt(np.pi / (2 * tau)))
-        right_val = ((1 - (-1) / tau) * (1 + np.sqrt(2 / (tau - 2 * (-1)))))
-        return left_val - right_val
+        # Linear interpolation derivative in (-1, 0)
+        left_slope = (1 + np.sqrt(np.pi / (2 * tau)))
+        right_slope = (1 + np.sqrt(2 / (tau + 2))) * (1 + 1 / tau)
+        return left_slope - right_slope
     else:
-        # Interpolation between nu = 0 and nu = 1
-        left_val = -(1 + np.sqrt(np.pi / (2 * tau)))
-        sqrt_term = np.sqrt(4 * tau + 3 * 1)
-        right_val = (1 + 1 / sqrt_term) ** 2 * np.exp(-(1. / (1 + 1 / np.sqrt(1.))) / tau)
-        return left_val + right_val
+        # Linear interpolation derivative in (0, 1)
+        left_slope = -(1 + np.sqrt(np.pi / (2 * tau)))
+        sqrt_term = np.sqrt(4 * tau + 3)
+        pre_factor = (1 + 1 / sqrt_term) ** 2
+        exp_arg = -(1 / (1 + 1 / np.sqrt(1))) / tau
+        right_slope = pre_factor * np.exp(exp_arg)
+        return left_slope + right_slope
 
 # def calculate_focusing_factor_J(nu, tau):
 #     if nu < 0:
@@ -125,14 +139,14 @@ x_H = 9.21e-1 # mass fraction of hydrogen in the gas
 rho = mu * m_H * ((2-x_H)/x_H) * n_H2
 a_min = 1e-5 # minimum grain size in cm
 a_max = 1e-1 # maximum grain size in cm
-A = ((f_dg*rho)/rho_gr) * (3/(4*np.pi)) * (4-q) * (1/(a_min**(4-q)) - 1/(a_max**(4-q))) # normalization constant for MRN distribution
+A = ((f_dg*rho)/rho_gr) * (3/(4*np.pi)) * (4-q) * ((1/(a_min**(4-q))) - (1/(a_max**(4-q)))) # normalization constant for MRN distribution
 
 N_gr = 3
 a = np.logspace(np.log10(a_min), np.log10(a_max), N_gr) # grain sizes in cm
 n_gr = A * a**(-q)
 
 # Initial heuristic charge distribution of grains
-Z = [-1e2,-1e4,-1e6]
+Z = np.array([-1e2,-1e4,-1e6])
 # Z = np.full_like(a, -1)
 # Z = -(a/1e-5)**0.1
 
@@ -150,6 +164,15 @@ k_minus_2 = 4.4e-24*(T**-1) # rate coefficient for 3-body recombination in T^-1 
 E_a = 3.25 * eV # activation energy in erg
 W = 5 * eV # work function in erg
 nu_evap = 3.7e13 * np.exp(-E_a/(k_B*T)) # frequency of alk vibration resulting in evaporation in s^-1
+
+# print()
+# print("E_a/(k_B*T)")
+# print(E_a/(k_B*T))
+# print("")
+
+# print("np.exp(-E_a/(k_B*T)")
+# print(np.exp(-E_a/(k_B*T)))
+# print("")
 
 # Mass of different gas-phase species (Used chatgpt for values)
 m_e = 9.109e-28 # electron mass in g
@@ -171,8 +194,8 @@ s_ions = 1 # sticking coefficient for ions and neutrals
 # n_alk_tot = (((2*x_alk)/x_H) * n_H2)
 
 n_alk_tot = 3.04e-7 * n_H2 # total concentration of alkali (K) in cm^-3 (Desch & Turner 2015)
-n_alk_plus = 1e-10 * n_H2 # initial concentration of alkali ion (K+) in cm^-3
-n_e = 1e-10 * n_H2 # initial concentration of free electrons in cm^-3
+n_alk_plus = 1e-14 * n_H2 # initial concentration of alkali ion (K+) in cm^-3
+n_e = 1e-9 * n_H2 # initial concentration of free electrons in cm^-3
 n_m_plus = 1e-19 * n_H2 # initial concentration of molecular ion (HCO+) in cm^-3
 n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
 
@@ -181,26 +204,26 @@ n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration 
 # print([f"{z:.2e}" for z in Z])
 # print()
 # print("n_gr:")
-# print([f"{ngr:.2e}" for ngr in n_gr])
+# print([f"{ngr/n_H2:.2e}" for ngr in n_gr])
 # print()
 # print("Z*n_gr:")
 # Zn_gr = Z * n_gr
-# print([f"{prod:.2e}" for prod in Zn_gr])
+# print([f"{prod/n_H2:.2e}" for prod in Zn_gr])
 # print()
 # print("np.sum(Z*n_gr):")
-# print(f"{np.sum(Zn_gr):.2e}")
+# print(f"{np.sum(Zn_gr/n_H2):.2e}")
 # print()
 # print("n_alk_plus:")
-# print(f"{n_alk_plus:.2e}")
+# print(f"{n_alk_plus/n_H2:.2e}")
 # print()
 # print("n_m_plus:")
-# print(f"{n_m_plus:.2e}")
+# print(f"{n_m_plus/n_H2:.2e}")
 # print()
 # print("n_M_plus:")
-# print(f"{n_M_plus:.2e}")
+# print(f"{n_M_plus/n_H2:.2e}")
 # print()
 # print("n_e:")
-# print(f"{n_e:.2e}")
+# print(f"{n_e/n_H2:.2e}")
 # print()
 
 x = np.concatenate((Z, np.array([n_alk_plus, n_e, n_m_plus])))
@@ -211,7 +234,7 @@ x = np.concatenate((Z, np.array([n_alk_plus, n_e, n_m_plus])))
 
 #%%
 
-# Modified Powell's Hybrid method
+# Function to calculate the chemical network
 def calculate_F(x):
 
     Z = x[:N_gr] 
@@ -240,12 +263,22 @@ def calculate_F(x):
     # Focusing factor and sticking coefficient of different gas-phase species
     J_e = np.zeros_like(a) # Focusing factor for electrons
     J_ion = np.zeros_like(a) # Focusing factor for ions
+    J_neutral = np.zeros_like(a) # Focusing factor for neutral alkali (K)
 
     for i in range(len(a)):
         J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau[i]) # Focusing factor for electrons
         J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau[i]) # Focusing factor for ions
+        J_neutral[i] = calculate_focusing_factor_J(0, tau[i]) # Focusing factor for neutrals
 
-    J_neutral = np.ones_like(a) # Focusing factor for neutral alkali (K)
+    # print("J_e:")   
+    # print(J_e)
+    # print("")
+    # print("J_ion:")
+    # print(J_ion)
+    # print("")
+    # print("J_neutral:")
+    # print(J_neutral)
+    # print("")
 
     # Frequencies of different gas-phase species
     nu_e = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_e))**0.5 * s_electrons * J_e 
@@ -254,14 +287,58 @@ def calculate_F(x):
     nu_m_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_m_plus))**0.5 * s_ions * J_ion
     nu_M_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_M_plus))**0.5 * s_ions * J_ion
 
-    n_alk_0 = (n_alk_tot - ((1+(np.sum(nu_alk_plus)/nu_evap))*n_alk_plus))/(1+(np.sum(nu_alk_0))/nu_evap) # initial concentration of neutral alkali (K) in cm^-3
-    n_alk_cond = (1/nu_evap) * (nu_alk_plus*n_alk_plus + nu_alk_0*n_alk_0) # initial concentration of condensed alkali (K) on grains in cm^-3
+    # print("nu_e:")
+    # print(nu_e)
+    # print("")
+    # print("nu_alk_plus:")
+    # print(nu_alk_plus)
+    # print("")
+    # print("nu_alk_0:")
+    # print(nu_alk_0)
+    # print("")
+    # print("nu_m_plus:")
+    # print(nu_m_plus)
+    # print("")
+    # print("nu_M_plus:")
+    # print(nu_M_plus)
+    # print("")
+    # print("nu_evap:")
+    # print(nu_evap)
+    # print("")
+
+    n_alk_0 = (n_alk_tot - ((1+(np.sum(nu_alk_plus)/nu_evap))*n_alk_plus))/(1+(np.sum(nu_alk_0)/nu_evap)) # initial concentration of neutral alkali (K) in cm^-3
+    n_alk_cond = (1/nu_evap) * ((nu_alk_plus*n_alk_plus) + (nu_alk_0*n_alk_0)) # initial concentration of condensed alkali (K) on grains in cm^-3
     n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
 
+    # print("n_alk_tot:")
+    # print(f"{n_alk_tot:.2e}")
+    # print("")
+    # print("minus term:")
+    # print(f"{(1+(np.sum(nu_alk_plus)/nu_evap))*n_alk_plus:.2e}")
+    # print("")
+
+    # print("np.sum(nu_alk_plus)")
+    # print(np.sum(nu_alk_plus))
+    # print("")
+
+    # print("nu_evap")
+    # print(nu_evap)
+    # print("")
+
+    # print("n_alk_plus")
+    # print(n_alk_plus)
+    # print("")
+
+    # print("n_alk_0:")
+    # print(f"{n_alk_0:.2e}")
+    # print()
+    # print("n_alk_cond:")
+    # print(f"{n_alk_cond}")
+    # print()
     # print("n_M_plus:")
     # print(f"{n_M_plus:.2e}")
     # print()
-
+    
     W_eff = calc_W_eff(Z) # effective work function in erg
 
     # print("Effective work function (eV):")
@@ -280,7 +357,7 @@ def calculate_F(x):
 
     # print("n_M_0:")
     # print(f"{n_M_0:.2e}")
-    # print("")
+    # print()
 
     # Rates equations
     # Gas-phase reactions
@@ -301,7 +378,7 @@ def calculate_F(x):
     R_therm = n_gr * 4*np.pi * a**2 * lambda_R * ((4*np.pi*m_e*((k_B*T)**2))/(h**3)) * np.exp(-W_eff/(k_B*T)) # rate of thermionic emission of electrons in cm^-3 s^-1
 
     for i in range(N_gr):
-        F[i] = (R_alk_plus_ads[i] + R_m_plus_ads[i] + R_M_plus_ads[i] - R_e_ads[i] + R_therm[i] - R_alk_plus_evap[i])
+        F[i] = R_alk_plus_ads[i] + R_m_plus_ads[i] + R_M_plus_ads[i] - R_e_ads[i] + R_therm[i] - R_alk_plus_evap[i]
 
     F[N_gr] = - R_gas_3rec_alk_plus - R_gas_2rec_alk_plus + R_gas_collion + np.sum(R_alk_plus_evap) - np.sum(R_alk_plus_ads)
 
@@ -340,10 +417,12 @@ def calculate_Jacobian(x):
     # Focusing factor for different gas-phase species
     J_e = np.zeros_like(a) # Focusing factor for electrons
     J_ion = np.zeros_like(a) # Focusing factor for ions
+    J_neutral = np.zeros_like(a) # Focusing factor for neutral alkali (K)
 
     for i in range(len(a)):
         J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau[i]) # Focusing factor for electrons
         J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau[i]) # Focusing factor for ions
+        J_neutral[i] = calculate_focusing_factor_J(0, tau[i]) # Focusing factor for neutrals
 
     # print("nu_ff_e/tau:")
     # print((nu_ff_e/tau))
@@ -370,8 +449,6 @@ def calculate_Jacobian(x):
     # print(dJ_ion)
     # print("")
 
-    J_neutral = np.ones_like(a) # Focusing factor for neutral alkali (K)
-
     # Frequencies for different gas-phase species
     nu_e = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_e))**0.5 * s_electrons * J_e 
     nu_alk_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_alk_plus))**0.5 * s_ions * J_ion
@@ -379,7 +456,7 @@ def calculate_Jacobian(x):
     nu_m_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_m_plus))**0.5 * s_ions * J_ion
     nu_M_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_M_plus))**0.5 * s_ions * J_ion
 
-    n_alk_0 = (n_alk_tot - ((1+(np.sum(nu_alk_plus)/nu_evap))*n_alk_plus))/(1+(np.sum(nu_alk_0))/nu_evap) # initial concentration of neutral alkali (K) in cm^-3
+    n_alk_0 = (n_alk_tot - ((1+(np.sum(nu_alk_plus)/nu_evap))*n_alk_plus))/(1+(np.sum(nu_alk_0)/nu_evap)) # initial concentration of neutral alkali (K) in cm^-3
     n_alk_cond = (1/nu_evap) * (nu_alk_plus*n_alk_plus + nu_alk_0*n_alk_0) # initial concentration of condensed alkali (K) on grains in cm^-3
     n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
 
@@ -451,6 +528,7 @@ def calculate_Jacobian(x):
     return J
 
 
+
 #%%
 
 def solve_single_root(x_current, x_prev, i, tol=1e-7):
@@ -468,67 +546,139 @@ def solve_single_root(x_current, x_prev, i, tol=1e-7):
         x_local[i+1:] = x_prev[i+1:] 
         x_local[i] = x_i
         J = calculate_Jacobian(x_local)
-        return J[i, i]
+        diag = J[i, i]
+        return diag
 
     result = root_scalar(func_to_solve, method='newton', x0=x_current[i], fprime=fprime_func, xtol=tol)
 
     if not result.converged:
+        print('----------------')
         print(f"Warning: root_scalar did not converge for x[{i}]")
-        return x_current[i]  # fallback to previous value
+        print(f"[i={i}] Newton failed:")
+        print(f"  x0 = {x_current[i]}")
+        print(f"  F_i = {func_to_solve(x_current[i])}")
+        print(f"  J_ii = {fprime_func(x_current[i])}")
+        print('-- -- -- -- -- -- -- --')
+        print(f"[i={i}] Newton failed at x0 = {x_current[i]}, trying secant.")
+        print('----------------')
+        try:
+            result = root_scalar(func_to_solve, method='secant', x0=x_current[i], x1=x_current[i]*0.999, xtol=tol)
+        except Exception as e:
+            print()
+            print(f"Secant method failed too: {e}")
+            print()
+            return x_current[i]
     
     return result.root
 
 residual_history = []
-reldiff_history = []
 component_history = [[] for _ in range(len(x))] 
 omegas = []
 
-def nSOR(x, iteration=10000, omega_start=0.5, omega_end=1.2, tol_x = 1e-3, tol_F = 1e-6):
+def nSOR(x, iteration=1000, omega_start=1e-5, omega_end=1.2, tol_F = 1e-6):
 
     N = len(x)
+    omega = omega_start
+    prev_residual = np.inf
 
     for iter in range(iteration):
-        x_old = x.copy()
 
-        # Linear ramp of omega from omega_start to omega_end
-        t = iter / max(1, iteration - 1)
-        omega = (1 - t) * omega_start + t * omega_end
-        omegas.append(omega)
+        x_old = x.copy()
 
         for i in range(N):
             x_hat = solve_single_root(x, x_old, i)
-            x[i] = x_old[i] + omega * (x_hat - x_old[i])
+            x[i] = x_old[i] + (omega * (x_hat - x_old[i]))
 
-        residual_norm = np.linalg.norm(calculate_F(x))
-        rel_diff = np.abs((x - x_old) / (np.abs(x_old) + 1e-12))
-        max_reldiff = np.max(rel_diff)
-        
+        residual_norm = sp.linalg.norm(calculate_F(x))
+        omegas.append(omega)
+
+        if iter % 100 == 0 or iter == iteration - 1:
+            print()
+            print(f"Iteration {iter}")
+            print()
+            J = calculate_Jacobian(x)
+            jac_svd = sp.linalg.svd(J, compute_uv=False)
+            print("Initial Jacobian SVD:")
+            print(jac_svd)
+            print()
+            print("Concentrations:")
+            print(x)
+            print()
+
         for j in range(N):
             component_history[j].append(x[j])
 
         residual_history.append(residual_norm)
-        reldiff_history.append(max_reldiff)
 
-        if residual_norm < tol_F and np.max(rel_diff) < tol_x:
-            print(f"Converged: residual = {residual_norm:.2e}, max rel diff = {np.max(rel_diff):.2e}")
+        if residual_norm < tol_F:
+            print(f"Converged: residual = {residual_norm:.2e}")
             return x
         
+        # Determine update step based on current omega range
+        if omega < 1e-4:
+            delta = 1e-5
+            drop = 5e-6
+        elif omega < 1e-3:
+            delta = 1e-4
+            drop = 5e-5
+        elif omega < 1e-2:
+            delta = 1e-3
+            drop = 5e-4
+        elif omega < 1e-1:
+            delta = 1e-2
+            drop = 5e-3
+        elif omega < 1.0:
+            delta = 1e-1
+            drop = 5e-2
+        else:
+            delta = 1e-1
+            drop = 5e-2
+
+        # Update omega based on residual improvement
+        if residual_norm < prev_residual:
+            omega += delta
+        else:
+            omega = max(omega-drop, 1e-12)  # avoid omega = 0
+
+        # Clamp to maximum allowed value
+        omega = min(omega, omega_end)
+
+        # Update previous residual
+        prev_residual = residual_norm
+
         # print(f"Iteration {iter + 1}, x values:")
         # print(x)
 
     print("Warning: nSOR did not converge within iteration limits.")
     return x
 
-
 #%%
 
+print()
+print("Initial function:")
+function = calculate_F(x)
+print(function)
+print()
+print("Initial Jacobian:")
+jacobian = calculate_Jacobian(x)
+print(jacobian)
+print()
+jac_svd = sp.linalg.svd(jacobian, compute_uv=False)
+print("Initial Jacobian SVD:")
+print(jac_svd)
 print()
 print("Initial concentrations:")
 print(x)
 print()
 
+x_1 = x.copy()
+
 nSOR_ = nSOR(x)
 
+print()
+print("Initial concentrations:")
+print(x_1)
+print()
 print("nSOR result:")
 print(nSOR_)
 print()
@@ -545,31 +695,6 @@ plt.grid(True)
 plt.legend()
 
 plt.subplot(1, 2, 2)
-plt.plot(reldiff_history, label='Max Relative Change')
-plt.yscale('log')
-plt.xlabel('Iteration')
-plt.ylabel('max(|Δx / x|)')
-plt.title('Relative Change in x')
-plt.grid(True)
-plt.legend()
-
-plt.tight_layout()
-plt.show()
-
-plt.figure(figsize=(10, 5))
-
-for i, comp_history in enumerate(component_history):
-    plt.plot(comp_history, label=f"x[{i}]")
-    plt.xlabel('Iteration')
-    plt.ylabel('Concentration')
-    plt.title('Concentration of Species Over Iterations')
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-plt.figure(figsize=(10, 5))
-
 plt.plot(omegas, label='Relaxation Factor (ω)')
 plt.xlabel('Iteration')
 plt.ylabel('ω')
@@ -580,74 +705,103 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
+# plt.figure(figsize=(10, 5))
+
+# for i, comp_history in enumerate(component_history):
+#     plt.plot(comp_history, label=f"x[{i}]")
+#     plt.xlabel('Iteration')
+#     plt.ylabel('Concentration')
+#     plt.title('Concentration of Species Over Iterations')
+#     plt.grid(True)
+#     plt.legend()
+#     plt.tight_layout()
+#     plt.show()
+
 #%%
 
-# max_iter = 10
-# tolerance = 1e-7
-# iter = 0
+x = nSOR_
+max_iter = 1000
+tolerance = 1e-7
+iter = 0
+residual_history_2 = []
 
-# for iteration in range(max_iter):
+for iteration in range(max_iter):
 
-#     print("--------------------------------------------------")
-#     print(f"Iteration {iteration + 1}/{max_iter}")
-#     print("")
+    print("--------------------------------------------------")
+    print(f"Iteration {iteration + 1}/{max_iter}")
+    print("")
 
-#     F = calculate_F(x)
-#     print(f"Iteration {iteration + 1}, F values:")
-#     print(F)
-#     print("")
+    F = calculate_F(x)
+    print(f"Iteration {iteration + 1}, F values:")
+    print(F)
+    print("")
     
-#     J = calculate_Jacobian(x)
-#     print(f"Iteration {iteration + 1}, Jacobian:")
-#     print(J)
-#     print("")
+    J = calculate_Jacobian(x)
+    print(f"Iteration {iteration + 1}, Jacobian:")
+    print(J)
+    print("")
     
-#     det = sp.linalg.det(J)
-#     # print(f"Determinant: {det}")
+    det = sp.linalg.det(J)
+    # print(f"Determinant: {det}")
     
-#     # if abs(det) < 1e-12:
-#     #     print("Warning: Matrix is close to singular and might not be invertible.")
-#     #     break 
+    # if abs(det) < 1e-12:
+    #     print("Warning: Matrix is close to singular and might not be invertible.")
+    #     break 
 
-#     delta_x = sp.linalg.solve(J, -F)
-#     print("Change in x:")
-#     print(delta_x)
-#     print("")
+    J_inv = sp.linalg.pinv(J)
+    delta_x = -J_inv @ F
+    print("Change in x:")
+    print(delta_x)
+    print("")
     
-#     delta = 100
-#     alpha_const = 0.1
-#     beta_const = 1e-14
-#     norm_delta_x = sp.linalg.norm(delta_x)
-#     if norm_delta_x >= delta:
-#         print("Adjusting step size due to large delta_x.")
-#         print("")
-#         delta_x = (alpha_const*sp.linalg.solve(J, -F)) - (2*beta_const*(J.T @ F))
-#         print("Beta constant bit")
-#         print(-(2*beta_const*(J.T @ F)))
-#         print("")
-#         print("Adjusted change in x:")
-#         print(delta_x)
-#         print("")
+    delta = 100
+    alpha_const = 0.1
+    beta_const = 1e-14
+    norm_delta_x = sp.linalg.norm(delta_x)
+    if norm_delta_x >= delta:
+        print("Adjusting step size due to large delta_x.")
+        print("")
+        delta_x = (alpha_const*sp.linalg.solve(J, -F)) - (2*beta_const*(J.T @ F))
+        print("Beta constant bit")
+        print(-(2*beta_const*(J.T @ F)))
+        print("")
+        print("Adjusted change in x:")
+        print(delta_x)
+        print("")
 
     
-#     print("Current concentrations:")
-#     print(x)
-#     print("")
+    print("Current concentrations:")
+    print(x)
+    print("")
     
-#     x += delta_x
-#     print("Updated concentrations:")
-#     print(x)
-#     print("")
+    x += delta_x
+    print("Updated concentrations:")
+    print(x)
+    print("")
 
-#     norm_F = sp.linalg.norm(F)
-#     if norm_F < tolerance:
-#         print(f"Convergence achieved after {iteration + 1} iterations.")
-#         print("")
-#         break
+    norm_F = sp.linalg.norm(F)
+    residual_history_2.append(norm_F)
+    if norm_F < tolerance:
+        print(f"Convergence achieved after {iteration + 1} iterations.")
+        print("")
+        break
     
-#     if iteration == max_iter - 1:
-#         print("Maximum iterations reached without convergence.")
-#         print("")
+    if iteration == max_iter - 1:
+        print("Maximum iterations reached without convergence.")
+        print("")
+
+
+# Plotting the residual history
+plt.figure(figsize=(10, 5))
+plt.plot(residual_history_2, label='Residual Norm')
+plt.yscale('log')
+plt.xlabel('Iteration')
+plt.ylabel('||F(x)||')
+plt.title('Residual Norm Convergence')
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
 
 
 # %%
