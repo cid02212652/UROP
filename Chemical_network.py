@@ -1,6 +1,7 @@
 #%%
 
 import numpy as np
+import numdifftools as nd
 import scipy as sp
 from scipy.optimize import root_scalar
 import matplotlib.pyplot as plt
@@ -613,6 +614,42 @@ def calculate_Jacobian(x):
     return J
 
 
+def calculate_3_unknowns(x):
+
+    Z = x[:N_gr] 
+    n_alk_plus = x[N_gr]
+    n_e = x[N_gr + 1]
+    n_m_plus = x[N_gr + 2]
+    
+    F = np.zeros_like(x)
+
+    nu_ff_e = calculate_nu_ff(Z, q_e, e) 
+    nu_ff_ion = calculate_nu_ff(Z, q_ion, e)
+
+    tau = calculate_tau(a, k_B, T)
+
+    # Focusing factor and sticking coefficient of different gas-phase species
+    J_e = np.zeros_like(a) # Focusing factor for electrons
+    J_ion = np.zeros_like(a) # Focusing factor for ions
+    J_neutral = np.zeros_like(a) # Focusing factor for neutral alkali (K)
+
+    for i in range(len(a)):
+        J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau[i]) # Focusing factor for electrons
+        J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau[i]) # Focusing factor for ions
+        J_neutral[i] = calculate_focusing_factor_J(0, tau[i]) # Focusing factor for neutrals
+
+    # Frequencies of different gas-phase species
+    nu_e = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_e))**0.5 * s_electrons * J_e 
+    nu_alk_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_alk_plus))**0.5 * s_ions * J_ion
+    nu_alk_0 = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_alk_0))**0.5 * s_ions * J_neutral
+    nu_m_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_m_plus))**0.5 * s_ions * J_ion
+    nu_M_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_M_plus))**0.5 * s_ions * J_ion
+
+    n_alk_0 = (n_alk_tot - ((1+(np.sum(nu_alk_plus)/nu_evap))*n_alk_plus))/(1+(np.sum(nu_alk_0)/nu_evap)) # initial concentration of neutral alkali (K) in cm^-3
+    n_alk_cond = (1/nu_evap) * ((nu_alk_plus*n_alk_plus) + (nu_alk_0*n_alk_0)) # initial concentration of condensed alkali (K) on grains in cm^-3
+    n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
+
+    return np.concatenate((np.array([n_M_plus, n_alk_0]), n_alk_cond))
 
 #%%
 
@@ -656,11 +693,11 @@ def solve_single_root(x_current, x_prev, i, tol=1e-7):
     
     return result.root
 
-residual_history = []
-component_history = [[] for _ in range(len(x))] 
-omegas = []
+# residual_history = []
+# component_history = [[] for _ in range(len(x))] 
+# omegas = []
 
-def nSOR(x, iteration=1000, omega_start=1e-1, omega_end=1.2, tol_F = 1e-6):
+def nSOR(x, iteration=1000, omega_start=1e-5, omega_end=1.2, tol_F = 1e-3):
 
     N = len(x)
     omega = omega_start
@@ -675,25 +712,20 @@ def nSOR(x, iteration=1000, omega_start=1e-1, omega_end=1.2, tol_F = 1e-6):
             x[i] = x_old[i] + (omega * (x_hat - x_old[i]))
 
         residual_norm = sp.linalg.norm(calculate_F(x))
-        omegas.append(omega)
+        # omegas.append(omega)
 
         if iter % 100 == 0 or iter == iteration - 1:
             print()
             print(f"Iteration {iter}")
             print()
-            J = calculate_Jacobian(x)
-            jac_svd = sp.linalg.svd(J, compute_uv=False)
-            print("Initial Jacobian SVD:")
-            print(jac_svd)
-            print()
             print("Concentrations:")
             print(x)
             print()
 
-        for j in range(N):
-            component_history[j].append(x[j])
+        # for j in range(N):
+            # component_history[j].append(x[j])
 
-        residual_history.append(residual_norm)
+        # residual_history.append(residual_norm)
 
         if residual_norm < tol_F:
             print(f"Converged: residual = {residual_norm:.2e}")
@@ -739,22 +771,30 @@ def nSOR(x, iteration=1000, omega_start=1e-1, omega_end=1.2, tol_F = 1e-6):
 
 #%%
 
-print()
-print("Initial function:")
-function = calculate_F(x)
-print(function)
-print()
-print("Initial Jacobian:")
-jacobian = calculate_Jacobian(x)
-print(jacobian)
-print()
-jac_svd = sp.linalg.svd(jacobian, compute_uv=False)
-print("Initial Jacobian SVD:")
-print(jac_svd)
-print()
-print("Initial concentrations:")
-print(x)
-print()
+# print()
+# print("Initial function:")
+# function = calculate_F(x)
+# print(function)
+# print()
+# print("Initial Jacobian:")
+# jacobian = calculate_Jacobian(x)
+# print(jacobian)
+# print()
+# print("Numerical Jacobian:")
+# jacobian_f = nd.Jacobian(calculate_F, method='central')
+# J_numerical = jacobian_f(x)
+# print(J_numerical)
+# print()
+# diff = np.abs(J_numerical - jacobian)
+# print("Max absolute difference:", np.max(diff))
+# print()
+# jac_svd = sp.linalg.svd(jacobian, compute_uv=False)
+# print("Initial Jacobian SVD:")
+# print(jac_svd)
+# print()
+# print("Initial concentrations:")
+# print(x)
+# print()
 
 x_1 = x.copy()
 
@@ -768,27 +808,27 @@ print("nSOR result:")
 print(nSOR_)
 print()
 
-plt.figure(figsize=(10, 5))
+# plt.figure(figsize=(10, 5))
 
-plt.subplot(1, 2, 1)
-plt.plot(residual_history, label='Residual Norm')
-plt.yscale('log')
-plt.xlabel('Iteration')
-plt.ylabel('||F(x)||')
-plt.title('Residual Norm Convergence')
-plt.grid(True)
-plt.legend()
+# plt.subplot(1, 2, 1)
+# plt.plot(residual_history, label='Residual Norm')
+# plt.yscale('log')
+# plt.xlabel('Iteration')
+# plt.ylabel('||F(x)||')
+# plt.title('Residual Norm Convergence')
+# plt.grid(True)
+# plt.legend()
 
-plt.subplot(1, 2, 2)
-plt.plot(omegas, label='Relaxation Factor (ω)')
-plt.xlabel('Iteration')
-plt.ylabel('ω')
-plt.title('Relaxation Factor Over Iterations')
-plt.grid(True)
-plt.legend()
+# plt.subplot(1, 2, 2)
+# plt.plot(omegas, label='Relaxation Factor (ω)')
+# plt.xlabel('Iteration')
+# plt.ylabel('ω')
+# plt.title('Relaxation Factor Over Iterations')
+# plt.grid(True)
+# plt.legend()
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 
 # plt.figure(figsize=(10, 5))
 
@@ -808,7 +848,7 @@ x = nSOR_
 max_iter = 1000
 tolerance = 1e-7
 iter = 0
-residual_history_2 = []
+# residual_history_2 = []
 
 for iteration in range(max_iter):
 
@@ -817,14 +857,14 @@ for iteration in range(max_iter):
     print("")
 
     F = calculate_F(x)
-    print(f"Iteration {iteration + 1}, F values:")
-    print(F)
-    print("")
+    # print(f"Iteration {iteration + 1}, F values:")
+    # print(F)
+    # print("")
     
     J = calculate_Jacobian(x)
-    print(f"Iteration {iteration + 1}, Jacobian:")
-    print(J)
-    print("")
+    # print(f"Iteration {iteration + 1}, Jacobian:")
+    # print(J)
+    # print("")
     
     det = sp.linalg.det(J)
     # print(f"Determinant: {det}")
@@ -847,9 +887,9 @@ for iteration in range(max_iter):
         print("Adjusting step size due to large delta_x.")
         print("")
         delta_x = (alpha_const*sp.linalg.solve(J, -F)) - (2*beta_const*(J.T @ F))
-        print("Beta constant bit")
-        print(-(2*beta_const*(J.T @ F)))
-        print("")
+        # print("Beta constant bit")
+        # print(-(2*beta_const*(J.T @ F)))
+        # print("")
         print("Adjusted change in x:")
         print(delta_x)
         print("")
@@ -865,10 +905,49 @@ for iteration in range(max_iter):
     print("")
 
     norm_F = sp.linalg.norm(F)
-    residual_history_2.append(norm_F)
+    # residual_history_2.append(norm_F)
     if norm_F < tolerance:
         print(f"Convergence achieved after {iteration + 1} iterations.")
         print("")
+
+        print("Final concentrations:")
+        unknowns = calculate_3_unknowns(x)
+        full_x = np.concatenate((x, unknowns))
+        print(full_x)
+        print("")
+
+        print("---------------------------------------------")
+
+        print("|sum(Z * n_gr)|:")
+        print(np.abs(np.sum(full_x[:N_gr] * (n_gr/n_H2))))
+        print("")
+
+        print("n_alk_plus:")
+        print(full_x[N_gr]/n_H2)
+        print("")
+
+        print("n_e:")
+        print(full_x[N_gr+1]/n_H2)
+        print("")
+
+        print("n_m_plus:")
+        print(full_x[N_gr+2]/n_H2)
+        print("")
+
+        print("n_M_plus:")
+        print(full_x[N_gr+3]/n_H2)
+        print("")
+
+        print("n_alk_0:")
+        print(full_x[N_gr+4]/n_H2)
+        print("")
+
+        print("sum(n_alk_cond):")
+        print(np.sum(full_x[N_gr+5:N_gr+5+N_gr]/n_H2))
+        print("")
+
+        print("---------------------------------------------")
+
         break
     
     if iteration == max_iter - 1:
@@ -877,15 +956,15 @@ for iteration in range(max_iter):
 
 
 # Plotting the residual history
-plt.figure(figsize=(10, 5))
-plt.plot(residual_history_2, label='Residual Norm', linewidth=1)
-plt.xlabel('Iteration')
-plt.ylabel('||F(x)||')
-plt.title('Residual Norm Convergence')
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(10, 5))
+# plt.plot(residual_history_2, label='Residual Norm', linewidth=1)
+# plt.xlabel('Iteration')
+# plt.ylabel('||F(x)||')
+# plt.title('Residual Norm Convergence')
+# plt.grid(True)
+# plt.legend()
+# plt.tight_layout()
+# plt.show()
 
 
 # %%
