@@ -7,6 +7,7 @@ from scipy.optimize import root_scalar
 import matplotlib.pyplot as plt
 np.set_printoptions(linewidth=200)
 np.set_printoptions(formatter={'float_kind': lambda x: f"{x:.2e}"})
+import time
 
 #%%
 
@@ -17,65 +18,94 @@ def calculate_tau(a,k_B,T):
     return (a * k_B * T) / (e**2)
 
 def calculate_focusing_factor_J(nu, tau):
-    if nu < -1:
-        # Equation (3.4) from D+S (1987)
-        factor = (1 - nu / tau)
-        sqrt_term = np.sqrt(2 / (tau - 2 * nu))
-        return factor * (1 + sqrt_term)
-    elif nu > 1:
-        # Equation (3.5)
-        sqrt_term = 1 / np.sqrt(4 * tau + 3 * nu)
-        pre_factor = (1 + sqrt_term) ** 2
-        exp_arg = -(nu / (1 + 1 / np.sqrt(nu))) / tau
-        return pre_factor * np.exp(exp_arg)
-    elif nu < 0:
-        # Interpolation for -1 < nu < 0
-        left_term = (1 + np.sqrt(np.pi / (2 * tau))) * (1 + nu)
-        right_term = (1 + np.sqrt(2 / (tau + 2))) * (1 + 1 / tau) * (-nu)
-        return left_term - right_term
-    elif nu == 0:
-        return 1 + np.sqrt(np.pi / (2 * tau))
-    else:
-        # Interpolation for 0 ≤ nu ≤ 1
-        left_term = (1 + np.sqrt(np.pi / (2 * tau))) * (1 - nu)
-        pre_factor = (1 + 1 / np.sqrt(4 * tau + 3)) ** 2
-        exp_arg = -(1 / (1 + 1 / np.sqrt(1))) / tau
-        right_term = pre_factor * np.exp(exp_arg) * nu
-        return left_term + right_term
+    nu = np.asarray(nu)
+    tau = np.asarray(tau)
+
+    result = np.zeros_like(nu, dtype=float)
+
+    # Masks for the regions
+    mask1 = nu < -1
+    mask2 = nu > 1
+    mask3 = (nu >= -1) & (nu < 0)
+    mask4 = nu == 0
+    mask5 = (nu > 0) & (nu <= 1)
+
+    # Equation (3.4) from Draine & Sutin (1987)
+    factor = (1 - nu[mask1] / tau[mask1])
+    sqrt_term = np.sqrt(2 / (tau[mask1] - 2 * nu[mask1]))
+    result[mask1] = factor * (1 + sqrt_term)
+
+    # Equation (3.5)
+    sqrt_term = 1 / np.sqrt(4 * tau[mask2] + 3 * nu[mask2])
+    pre_factor = (1 + sqrt_term) ** 2
+    exp_arg = -(nu[mask2] / (1 + 1 / np.sqrt(nu[mask2]))) / tau[mask2]
+    result[mask2] = pre_factor * np.exp(exp_arg)
+
+    # Interpolation: -1 < nu < 0
+    left_term = (1 + np.sqrt(np.pi / (2 * tau[mask3]))) * (1 + nu[mask3])
+    right_term = (1 + np.sqrt(2 / (tau[mask3] + 2))) * (1 + 1 / tau[mask3]) * (-nu[mask3])
+    result[mask3] = left_term - right_term
+
+    # nu == 0
+    result[mask4] = 1 + np.sqrt(np.pi / (2 * tau[mask4]))
+
+    # Interpolation: 0 < nu ≤ 1
+    left_term = (1 + np.sqrt(np.pi / (2 * tau[mask5]))) * (1 - nu[mask5])
+    pre_factor = (1 + 1 / np.sqrt(4 * tau[mask5] + 3)) ** 2
+    exp_arg = -1 / (1 + 1 / np.sqrt(1)) / tau[mask5]  # Simplifies to -1 / (1 + 1) / tau = -0.5 / tau
+    right_term = pre_factor * np.exp(exp_arg) * nu[mask5]
+    result[mask5] = left_term + right_term
+
+    return result
 
 def calculate_focusing_factor_derivative_dJ_dnu(nu, tau):
-    if nu < -1:
-        # Derivative of Equation (3.4)
-        sqrt_term = np.sqrt(2 / (tau - 2 * nu))
-        dsqrt_dnu = (2 * sqrt_term) / ((tau - 2 * nu) ** 1.5)
-        dJ_dnu = (-1 / tau) * (1 + sqrt_term) + (1 - nu / tau) * dsqrt_dnu
-        return dJ_dnu
-    elif nu > 1:
-        # Derivative of Equation (3.5)
-        A = 4 * tau + 3 * nu
-        sqrt_A = np.sqrt(A)
-        sqrt_nu = np.sqrt(nu)
-        denom_inner = 1 + 1 / sqrt_nu
-        exp_arg = -(nu / denom_inner) / tau
-        exp_term = np.exp(exp_arg)
-        d_prefactor_dnu = -3 * A ** (-1.5) * (1 + 1 / sqrt_A)
-        pre_factor = (1 + 1 / sqrt_A) ** 2
-        d_exp_arg_dnu = (0.5 / sqrt_nu + 1) / (denom_inner ** 2 * tau)
-        d_exp_term_dnu = -exp_term * d_exp_arg_dnu
-        return d_prefactor_dnu * exp_term + pre_factor * d_exp_term_dnu
-    elif nu < 0:
-        # Linear interpolation derivative in (-1, 0)
-        left_slope = (1 + np.sqrt(np.pi / (2 * tau)))
-        right_slope = (1 + np.sqrt(2 / (tau + 2))) * (1 + 1 / tau)
-        return left_slope - right_slope
-    else:
-        # Linear interpolation derivative in (0, 1)
-        left_slope = -(1 + np.sqrt(np.pi / (2 * tau)))
-        sqrt_term = np.sqrt(4 * tau + 3)
-        pre_factor = (1 + 1 / sqrt_term) ** 2
-        exp_arg = -(1 / (1 + 1 / np.sqrt(1))) / tau
-        right_slope = pre_factor * np.exp(exp_arg)
-        return left_slope + right_slope
+    nu = np.asarray(nu)
+    tau = np.asarray(tau)
+
+    dJ_dnu = np.zeros_like(nu, dtype=float)
+
+    # Masks
+    mask1 = nu < -1
+    mask2 = nu > 1
+    mask3 = (nu >= -1) & (nu < 0)
+    mask4 = (nu > 0) & (nu <= 1)
+
+    ## --- Region 1: nu < -1 ---
+    factor1 = (1 - nu[mask1] / tau[mask1])
+    sqrt_term1 = np.sqrt(2 / (tau[mask1] - 2 * nu[mask1]))
+    dsqrt_dnu1 = (2 * sqrt_term1) / ((tau[mask1] - 2 * nu[mask1]) ** 1.5)
+    dJ_dnu[mask1] = (-1 / tau[mask1]) * (1 + sqrt_term1) + factor1 * dsqrt_dnu1
+
+    ## --- Region 2: nu > 1 ---
+    A = 4 * tau[mask2] + 3 * nu[mask2]
+    sqrt_A = np.sqrt(A)
+    sqrt_nu = np.sqrt(nu[mask2])
+    denom_inner = 1 + 1 / sqrt_nu
+    exp_arg = -(nu[mask2] / denom_inner) / tau[mask2]
+    exp_term = np.exp(exp_arg)
+
+    pre_factor = (1 + 1 / sqrt_A) ** 2
+    d_prefactor_dnu = -3 * A ** (-1.5) * (1 + 1 / sqrt_A)
+
+    d_exp_arg_dnu = (0.5 / sqrt_nu + 1) / (denom_inner ** 2 * tau[mask2])
+    d_exp_term_dnu = -exp_term * d_exp_arg_dnu
+
+    dJ_dnu[mask2] = d_prefactor_dnu * exp_term + pre_factor * d_exp_term_dnu
+
+    ## --- Region 3: -1 < nu < 0 ---
+    left_slope = (1 + np.sqrt(np.pi / (2 * tau[mask3])))
+    right_slope = (1 + np.sqrt(2 / (tau[mask3] + 2))) * (1 + 1 / tau[mask3])
+    dJ_dnu[mask3] = left_slope - right_slope
+
+    ## --- Region 4: 0 < nu ≤ 1 ---
+    left_slope = -(1 + np.sqrt(np.pi / (2 * tau[mask4])))
+    sqrt_term = np.sqrt(4 * tau[mask4] + 3)
+    pre_factor = (1 + 1 / sqrt_term) ** 2
+    exp_arg = -0.5 / tau[mask4]
+    right_slope = pre_factor * np.exp(exp_arg)
+    dJ_dnu[mask4] = left_slope + right_slope
+
+    return dJ_dnu
 
 # def calculate_focusing_factor_J(nu, tau):
 #     if nu < 0:
@@ -150,15 +180,15 @@ A = ((f_dg*rho)/rho_gr) * (3/(4*np.pi)) * (4-q) * ((1/(a_min**(4-q)))-(1/(a_max*
 # print(f"{A:.2e}")
 # print()
 
-N_gr = 4
+N_gr = 50
 a_edges = np.logspace(-5, -1, N_gr+1) # grain sizes in cm
 a = np.sqrt(a_edges[:-1] * a_edges[1:])  # geometric mean
 
 n_gr = np.zeros(N_gr)
-for i in range(N_gr):
-    a1 = a_edges[i]
-    a2 = a_edges[i + 1]
-    n_gr[i] = (A / (1 - q)) * (a2**(1 - q) - a1**(1 - q))
+
+a1 = a_edges[:N_gr]
+a2 = a_edges[1:]
+n_gr[:] = (A / (1 - q)) * (a2**(1 - q) - a1**(1 - q))
 
 n_gr_total = np.sum(n_gr)  # total number density of grains
 
@@ -317,10 +347,9 @@ def calculate_F(x):
     J_ion = np.zeros_like(a) # Focusing factor for ions
     J_neutral = np.zeros_like(a) # Focusing factor for neutral alkali (K)
 
-    for i in range(len(a)):
-        J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau[i]) # Focusing factor for electrons
-        J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau[i]) # Focusing factor for ions
-        J_neutral[i] = calculate_focusing_factor_J(0, tau[i]) # Focusing factor for neutrals
+    J_e = calculate_focusing_factor_J(nu_ff_e, tau) # Focusing factor for electrons
+    J_ion = calculate_focusing_factor_J(nu_ff_ion, tau) # Focusing factor for ions
+    J_neutral = calculate_focusing_factor_J(np.zeros_like(nu_ff_e), tau) # Focusing factor for neutrals
 
     # print("J_e:")   
     # print(J_e)
@@ -463,8 +492,7 @@ def calculate_F(x):
     # print(R_therm)
     # print()
 
-    for i in range(N_gr):
-        F[i] = R_alk_plus_ads[i] + R_m_plus_ads[i] + R_M_plus_ads[i] - R_e_ads[i] + R_therm[i] - R_alk_plus_evap[i]
+    F[:N_gr] = R_alk_plus_ads[:N_gr] + R_m_plus_ads[:N_gr] + R_M_plus_ads[:N_gr] - R_e_ads[:N_gr] + R_therm[:N_gr] - R_alk_plus_evap[:N_gr]
 
     F[N_gr] = - R_gas_3rec_alk_plus - R_gas_2rec_alk_plus + R_gas_collion + np.sum(R_alk_plus_evap) - np.sum(R_alk_plus_ads)
 
@@ -505,10 +533,9 @@ def calculate_Jacobian(x):
     J_ion = np.zeros_like(a) # Focusing factor for ions
     J_neutral = np.zeros_like(a) # Focusing factor for neutral alkali (K)
 
-    for i in range(len(a)):
-        J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau[i]) # Focusing factor for electrons
-        J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau[i]) # Focusing factor for ions
-        J_neutral[i] = calculate_focusing_factor_J(0, tau[i]) # Focusing factor for neutrals
+    J_e = calculate_focusing_factor_J(nu_ff_e, tau) # Focusing factor for electrons
+    J_ion = calculate_focusing_factor_J(nu_ff_ion, tau) # Focusing factor for ions
+    J_neutral = calculate_focusing_factor_J(np.zeros_like(nu_ff_e), tau) # Focusing factor for neutrals
 
     # print("nu_ff_e/tau:")
     # print((nu_ff_e/tau))
@@ -524,9 +551,8 @@ def calculate_Jacobian(x):
     dJ_e_dZ = np.zeros_like(a) # Focusing factor for electrons
     dJ_ion_dZ = np.zeros_like(a) # Focusing factor for ions
 
-    for i in range(len(a)):
-        dJ_e_dZ[i] = -calculate_focusing_factor_derivative_dJ_dnu(nu_ff_e[i], tau[i]) # Focusing factor for electrons
-        dJ_ion_dZ[i] = calculate_focusing_factor_derivative_dJ_dnu(nu_ff_ion[i], tau[i]) # Focusing factor for ions
+    dJ_e_dZ = -calculate_focusing_factor_derivative_dJ_dnu(nu_ff_e, tau) # Focusing factor for electrons
+    dJ_ion_dZ = calculate_focusing_factor_derivative_dJ_dnu(nu_ff_ion, tau) # Focusing factor for ions
 
     # print("dJ_e:")
     # print(dJ_e)
@@ -583,20 +609,16 @@ def calculate_Jacobian(x):
     R_therm = n_gr * 4*np.pi * a**2 * lambda_R * ((4*np.pi*m_e*((k_B*T)**2))/(h**3)) * np.exp(-W_eff/(k_B*T)) # rate of thermionic emission of electrons in cm^-3 s^-1
     dR_therm_dZ = -(1/(k_B*T)) * R_therm * dW_eff_dZ
 
-    for i in range(N_gr):
+    J[:N_gr, N_gr] = nu_alk_plus[:N_gr] + nu_M_plus[:N_gr]*dn_M_plus_dn_alk_plus - f_plus[:N_gr]*dn_alk_cond_dn_alk_plus[:N_gr]*nu_evap
+    J[:N_gr, N_gr+1] = -nu_e[:N_gr] + nu_M_plus[:N_gr]*dn_M_plus_dn_e
+    J[:N_gr, N_gr+2] = nu_m_plus[:N_gr] + nu_M_plus[:N_gr]*dn_M_plus_dn_m_plus
 
-        J[i, N_gr] = nu_alk_plus[i] + nu_M_plus[i]*dn_M_plus_dn_alk_plus - f_plus[i]*dn_alk_cond_dn_alk_plus[i]*nu_evap
-        J[i, N_gr+1] = -nu_e[i] + nu_M_plus[i]*dn_M_plus_dn_e
-        J[i, N_gr+2] = nu_m_plus[i] + nu_M_plus[i]*dn_M_plus_dn_m_plus
+    J[N_gr, :N_gr] = f_plus[:N_gr]*dn_alk_cond_dZ[:N_gr]*nu_evap + df_plus_dZ[:N_gr]*R_alk_evap[:N_gr] - n_alk_plus*dnu_alk_plus_dZ[:N_gr] + k_2*n_H2*dn_alk_0_dZ[:N_gr]
+    J[N_gr+1, :N_gr] = -gamma*n_e*dn_M_plus_dZ[:N_gr] - n_e*dnu_e_dZ[:N_gr] + dR_therm_dZ[:N_gr] + k_2*n_H2*dn_alk_0_dZ[:N_gr]
+    J[N_gr+2, :N_gr] = -beta*n_m_plus*dn_M_0_dZ[:N_gr] - n_m_plus*dnu_m_plus_dZ[:N_gr]
 
-        J[N_gr, i] = f_plus[i]*dn_alk_cond_dZ[i]*nu_evap + df_plus_dZ[i]*R_alk_evap[i] - n_alk_plus*dnu_alk_plus_dZ[i] + k_2*n_H2*dn_alk_0_dZ[i]
-        J[N_gr+1, i] = -gamma*n_e*dn_M_plus_dZ[i] - n_e*dnu_e_dZ[i] + dR_therm_dZ[i] + k_2*n_H2*dn_alk_0_dZ[i]
-        J[N_gr+2, i] = -beta*n_m_plus*dn_M_0_dZ[i] - n_m_plus*dnu_m_plus_dZ[i]
+    J[:N_gr, :N_gr] = np.diag(dnu_alk_plus_dZ[:N_gr]*n_alk_plus + dnu_m_plus_dZ[:N_gr]*n_m_plus + dnu_M_plus_dZ[:N_gr]*n_M_plus + dn_M_plus_dZ[:N_gr]*nu_M_plus[:N_gr] - dnu_e_dZ[:N_gr]*n_e + dR_therm_dZ[:N_gr] - f_plus[:N_gr]*dn_alk_cond_dZ[:N_gr]*nu_evap - df_plus_dZ[:N_gr]*R_alk_evap[:N_gr])
 
-        for j in range(N_gr):
-            if i == j:
-                J[i, j] = dnu_alk_plus_dZ[i]*n_alk_plus + dnu_m_plus_dZ[i]*n_m_plus + dnu_M_plus_dZ[i]*n_M_plus + dn_M_plus_dZ[i]*nu_M_plus[i] - dnu_e_dZ[i]*n_e + dR_therm_dZ[i] - f_plus[i]*dn_alk_cond_dZ[i]*nu_evap - df_plus_dZ[i]*R_alk_evap[i]
-    
     # n_alk_plus
     J[N_gr, N_gr] = -k_minus_2*n_H2*n_e - gamma*n_e - np.sum(nu_alk_plus) + k_2*n_H2*dn_alk_0_dn_alk_plus + np.sum(f_plus*dn_alk_cond_dn_alk_plus*nu_evap)
     J[N_gr+1, N_gr] = -k_minus_2*n_H2*n_e - gamma*n_e + k_2*n_H2*dn_alk_0_dn_alk_plus - gamma*n_e*dn_M_plus_dn_alk_plus
@@ -613,6 +635,90 @@ def calculate_Jacobian(x):
 
     return J
 
+def calculate_Jacobian_diag(x):
+
+    Z = x[:N_gr] 
+    n_alk_plus = x[N_gr]
+    n_e = x[N_gr + 1]
+    n_m_plus = x[N_gr + 2]
+
+    J_diag = np.zeros((len(x)))
+
+    nu_ff_e = calculate_nu_ff(Z, q_e, e) 
+    nu_ff_ion = calculate_nu_ff(Z, q_ion, e)
+
+    tau = calculate_tau(a, k_B, T)
+
+    # Focusing factor for different gas-phase species
+    J_e = np.zeros_like(a) # Focusing factor for electrons
+    J_ion = np.zeros_like(a) # Focusing factor for ions
+    J_neutral = np.zeros_like(a) # Focusing factor for neutral alkali (K)
+
+    J_e = calculate_focusing_factor_J(nu_ff_e, tau) # Focusing factor for electrons
+    J_ion = calculate_focusing_factor_J(nu_ff_ion, tau) # Focusing factor for ions
+    J_neutral = calculate_focusing_factor_J(np.zeros_like(nu_ff_e), tau) # Focusing factor for neutrals
+
+    # Derivative of focusing factor wrt Z
+    dJ_e_dZ = np.zeros_like(a) # Focusing factor for electrons
+    dJ_ion_dZ = np.zeros_like(a) # Focusing factor for ions
+
+    dJ_e_dZ = -calculate_focusing_factor_derivative_dJ_dnu(nu_ff_e, tau) # Focusing factor for electrons
+    dJ_ion_dZ = calculate_focusing_factor_derivative_dJ_dnu(nu_ff_ion, tau) # Focusing factor for ions
+
+    # Frequencies for different gas-phase species
+    nu_e = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_e))**0.5 * s_electrons * J_e 
+    nu_alk_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_alk_plus))**0.5 * s_ions * J_ion
+    nu_alk_0 = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_alk_0))**0.5 * s_ions * J_neutral
+    nu_m_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_m_plus))**0.5 * s_ions * J_ion
+    nu_M_plus = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_M_plus))**0.5 * s_ions * J_ion
+
+    n_alk_0 = (n_alk_tot - ((1+(np.sum(nu_alk_plus)/nu_evap))*n_alk_plus))/(1+(np.sum(nu_alk_0)/nu_evap)) # initial concentration of neutral alkali (K) in cm^-3
+    n_alk_cond = (1/nu_evap) * (nu_alk_plus*n_alk_plus + nu_alk_0*n_alk_0) # initial concentration of condensed alkali (K) on grains in cm^-3
+    n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
+
+    W_eff = calc_W_eff(Z) # effective work function in erg
+    f_plus = calc_f_plus(Z) # fraction of alkali ions evaporated
+
+    # Derivatives of frequencies for different gas-phase species wrt Z
+    dnu_e_dZ = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_e))**0.5 * s_electrons * dJ_e_dZ 
+    dnu_alk_plus_dZ = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_alk_plus))**0.5 * s_ions * dJ_ion_dZ
+    dnu_m_plus_dZ = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_m_plus))**0.5 * s_ions * dJ_ion_dZ
+    dnu_M_plus_dZ = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_M_plus))**0.5 * s_ions * dJ_ion_dZ
+
+    dn_alk_0_dn_alk_plus = -(np.sum(nu_alk_plus))/(nu_evap+np.sum(nu_alk_0)) # derivative of n_alk_0 wrt n_alk_plus
+
+    dn_alk_cond_dZ = (1/nu_evap) * (dnu_alk_plus_dZ*n_alk_plus) # derivative of n_alk_cond wrt Z
+    dn_alk_cond_dn_alk_plus = (1/nu_evap) * (nu_alk_plus + nu_alk_0*dn_alk_0_dn_alk_plus) # derivative of n_alk_cond wrt n_alk_plus
+
+    dn_M_0_dn_m_plus = 1 # derivative of n_M_0 wrt n_m_plus
+
+    dn_M_plus_dZ = -n_gr # derivative of n_M_plus wrt Z
+    dn_M_plus_dn_e = 1 # derivative of n_M_plus wrt n_e
+
+    df_plus_dZ = calc_df_plus_dZ(f_plus,tau)
+    dW_eff_dZ = (e**2)/a
+
+    x_M = 3.67e-5
+    x_H = 9.21e-1
+    n_M_tot = (((2*x_M)/x_H) * n_H2)
+    n_M_0 = n_M_tot - n_M_plus # initial concentration of neutral metal (Mg) in cm^-3
+
+    R_alk_evap = n_alk_cond * nu_evap # rate of total alkali evaporation in cm^-3 s^-1
+    R_therm = n_gr * 4*np.pi * a**2 * lambda_R * ((4*np.pi*m_e*((k_B*T)**2))/(h**3)) * np.exp(-W_eff/(k_B*T)) # rate of thermionic emission of electrons in cm^-3 s^-1
+    dR_therm_dZ = -(1/(k_B*T)) * R_therm * dW_eff_dZ
+
+    J_diag[:N_gr] = dnu_alk_plus_dZ[:N_gr]*n_alk_plus + dnu_m_plus_dZ[:N_gr]*n_m_plus + dnu_M_plus_dZ[:N_gr]*n_M_plus + dn_M_plus_dZ[:N_gr]*nu_M_plus[:N_gr] - dnu_e_dZ[:N_gr]*n_e + dR_therm_dZ[:N_gr] - f_plus[:N_gr]*dn_alk_cond_dZ[:N_gr]*nu_evap - df_plus_dZ[:N_gr]*R_alk_evap[:N_gr]
+
+    # n_alk_plus
+    J_diag[N_gr] = -k_minus_2*n_H2*n_e - gamma*n_e - np.sum(nu_alk_plus) + k_2*n_H2*dn_alk_0_dn_alk_plus + np.sum(f_plus*dn_alk_cond_dn_alk_plus*nu_evap)
+
+    # n_e
+    J_diag[N_gr+1] = -gamma*n_M_plus - gamma*n_e*dn_M_plus_dn_e - np.sum(nu_e) - alpha*n_m_plus - k_minus_2*n_H2*n_alk_plus - gamma*n_alk_plus
+
+    # n_m_plus
+    J_diag[N_gr+2] = -beta*n_M_0 - beta*n_m_plus*dn_M_0_dn_m_plus - alpha*n_e - np.sum(nu_m_plus)
+
+    return J_diag
 
 def calculate_3_unknowns(x):
 
@@ -633,10 +739,9 @@ def calculate_3_unknowns(x):
     J_ion = np.zeros_like(a) # Focusing factor for ions
     J_neutral = np.zeros_like(a) # Focusing factor for neutral alkali (K)
 
-    for i in range(len(a)):
-        J_e[i] = calculate_focusing_factor_J(nu_ff_e[i], tau[i]) # Focusing factor for electrons
-        J_ion[i] = calculate_focusing_factor_J(nu_ff_ion[i], tau[i]) # Focusing factor for ions
-        J_neutral[i] = calculate_focusing_factor_J(0, tau[i]) # Focusing factor for neutrals
+    J_e = calculate_focusing_factor_J(nu_ff_e, tau) # Focusing factor for electrons
+    J_ion = calculate_focusing_factor_J(nu_ff_ion, tau) # Focusing factor for ions
+    J_neutral = calculate_focusing_factor_J(np.zeros_like(nu_ff_e), tau) # Focusing factor for neutrals
 
     # Frequencies of different gas-phase species
     nu_e = n_gr * np.pi * a**2 * ((8*k_B*T)/(np.pi*m_e))**0.5 * s_electrons * J_e 
@@ -650,6 +755,7 @@ def calculate_3_unknowns(x):
     n_M_plus = n_e - np.sum(Z*n_gr) - n_alk_plus - n_m_plus # initial concentration of metal ion (Mg+) in cm^-3
 
     return np.concatenate((np.array([n_M_plus, n_alk_0]), n_alk_cond))
+
 
 #%%
 
@@ -667,8 +773,8 @@ def solve_single_root(x_current, x_prev, i, tol=1e-7):
         x_local = x_current.copy()
         x_local[i+1:] = x_prev[i+1:] 
         x_local[i] = x_i
-        J = calculate_Jacobian(x_local)
-        diag = J[i, i]
+        J = calculate_Jacobian_diag(x_local)
+        diag = J[i]
         return diag
 
     result = root_scalar(func_to_solve, method='newton', x0=x_current[i], fprime=fprime_func, xtol=tol)
@@ -680,16 +786,8 @@ def solve_single_root(x_current, x_prev, i, tol=1e-7):
         print(f"  x0 = {x_current[i]}")
         print(f"  F_i = {func_to_solve(x_current[i])}")
         print(f"  J_ii = {fprime_func(x_current[i])}")
-        print('-- -- -- -- -- -- -- --')
-        print(f"[i={i}] Newton failed at x0 = {x_current[i]}, trying secant.")
         print('----------------')
-        try:
-            result = root_scalar(func_to_solve, method='secant', x0=x_current[i], x1=x_current[i]*0.999, xtol=tol)
-        except Exception as e:
-            print()
-            print(f"Secant method failed too: {e}")
-            print()
-            return x_current[i]
+        return x_current[i]
     
     return result.root
 
@@ -798,7 +896,11 @@ def nSOR(x, iteration=1000, omega_start=1e-5, omega_end=1.2, tol_F = 1e-3):
 
 x_1 = x.copy()
 
+start_time = time.time()
+
 nSOR_ = nSOR(x)
+
+end_time = time.time()
 
 print()
 print("Initial concentrations:")
@@ -849,6 +951,8 @@ max_iter = 1000
 tolerance = 1e-7
 iter = 0
 # residual_history_2 = []
+
+start_time_ = time.time()
 
 for iteration in range(max_iter):
 
@@ -953,6 +1057,11 @@ for iteration in range(max_iter):
     if iteration == max_iter - 1:
         print("Maximum iterations reached without convergence.")
         print("")
+
+end_time_ = time.time()
+
+print(f"nSOR completed in {end_time - start_time} seconds.")
+print(f"Powell's Hybrid method completed in {end_time_ - start_time_} seconds.")
 
 
 # Plotting the residual history
